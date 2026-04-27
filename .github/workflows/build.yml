@@ -1,0 +1,65 @@
+name: Build Sable Daily
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # every day at midnight UTC
+  workflow_dispatch:      # allow manual triggers
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Clone ryanhcode/sable
+        run: git clone --depth 1 https://github.com/ryanhcode/sable.git sable
+
+      - name: Get latest commit SHA
+        id: git_info
+        working-directory: sable
+        run: |
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in gradle.properties
+        working-directory: sable
+        run: |
+          COMMIT_SHA="${{ steps.git_info.outputs.commit_sha }}"
+          # Replace the version line, appending -git-<sha>
+          sed -i -E "s/^(version=.+)$/\1-git-${COMMIT_SHA}/" gradle.properties
+          echo "Updated version:"
+          grep '^version=' gradle.properties
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build with Gradle
+        working-directory: sable
+        run: ./gradlew build --no-daemon
+
+      - name: Find built JAR
+        id: find_jar
+        working-directory: sable
+        run: |
+          JAR_PATH=$(find build/libs -name "*.jar" ! -name "*-sources*" ! -name "*-javadoc*" | head -n 1)
+          echo "jar_path=sable/${JAR_PATH}" >> "$GITHUB_OUTPUT"
+          echo "jar_name=$(basename ${JAR_PATH})" >> "$GITHUB_OUTPUT"
+
+      - name: Create release tag name
+        id: release_tag
+        run: |
+          COMMIT_SHA="${{ steps.git_info.outputs.commit_sha }}"
+          TAG="git-${COMMIT_SHA}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and upload JAR
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: "Sable build ${{ steps.release_tag.outputs.tag }}"
+          body: "Automated daily build from ryanhcode/sable@${{ steps.git_info.outputs.commit_sha }}"
+          files: ${{ steps.find_jar.outputs.jar_path }}
