@@ -47,13 +47,34 @@ jobs:
         working-directory: sable
         run: ./gradlew build
 
-      - name: Find built JAR
-        id: find_jar
-        working-directory: sable
+      - name: Collect built JARs
+        id: collect_jars
         run: |
-          JAR_PATH=$(find build/libs -name "*.jar" ! -name "*-sources*" ! -name "*-javadoc*" | head -n 1)
-          echo "jar_path=sable/${JAR_PATH}" >> "$GITHUB_OUTPUT"
-          echo "jar_name=$(basename ${JAR_PATH})" >> "$GITHUB_OUTPUT"
+          mkdir -p dist
+
+          find sable/sable-neoforge/build/libs sable/sable-fabric/build/libs \
+            -type f \
+            -name "*.jar" \
+            ! -name "*-sources*" \
+            ! -name "*-javadoc*" \
+            ! -name "*-dev*" \
+            -print \
+            -exec cp {} dist/ \;
+
+          echo "Built files:"
+          ls -lh dist
+
+          if [ -z "$(find dist -type f -name '*.jar' -print -quit)" ]; then
+            echo "No JAR files found."
+            exit 1
+          fi
+
+      - name: Upload self-use artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sable-self-use-${{ steps.git_info.outputs.commit_sha }}
+          path: dist/*.jar
+          retention-days: 14
 
       - name: Create release tag name
         id: release_tag
@@ -68,4 +89,4 @@ jobs:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           name: "Sable build ${{ steps.release_tag.outputs.tag }}"
           body: "Automated daily build from ryanhcode/sable@${{ steps.git_info.outputs.commit_sha }}"
-          files: ${{ steps.find_jar.outputs.jar_path }}
+          files: dist/*.jar
