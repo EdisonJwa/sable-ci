@@ -52,7 +52,7 @@ jobs:
         run: |
           mkdir -p dist
 
-          find sable/sable-neoforge/build/libs sable/sable-fabric/build/libs \
+          find sable/neoforge/build/libs sable/fabric/build/libs \
             -type f \
             -name "*.jar" \
             ! -name "*-sources*" \
